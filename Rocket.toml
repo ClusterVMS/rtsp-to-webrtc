@@ -1,0 +1,2 @@
+[default]
+limits = { string = 32768 }

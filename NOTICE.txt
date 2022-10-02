@@ -1,0 +1,5 @@
+RTSP to WebRTC
+Copyright 2022 Alicrow
+
+This project includes software from WebRTC.rs,
+under the MIT license and Apache License 2.0
