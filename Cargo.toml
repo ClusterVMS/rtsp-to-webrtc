@@ -1,6 +1,6 @@
 [package]
 name = "rtsp-to-webrtc"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -8,11 +8,13 @@ anyhow = "1.0.65"
 chrono = "0.4.22"
 clap = "3.2.22"
 env_logger = "0.9.1"
-failure = "0.1.8"
+figment = "0.10.8"
 futures = "0.3.24"
 log = "0.4.17"
 retina = "0.4.1"
 rocket = "0.5.0-rc.2"
+serde = { version = "1.0.145", features = ["derive"] }
 tokio = { version = "1.21.1", features = ["sync", "fs"] }
-url = "2.3.1"
+toml = "0.5.9"
+url = { version = "2.3.1", features = ["serde"] }
 webrtc = "0.5.1"

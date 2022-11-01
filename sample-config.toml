@@ -1,0 +1,13 @@
+[cameras.1]
+username = "admin"
+password = "password"
+
+[cameras.1.streams.1]
+source_url = "rtsp://192.168.1.42:554/onvif"
+
+[cameras.2]
+username = "admin"
+password = "password"
+
+[cameras.2.streams.1]
+source_url = "rtsp://192.168.1.43:554/onvif"

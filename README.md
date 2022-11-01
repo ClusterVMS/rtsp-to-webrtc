@@ -11,10 +11,10 @@ This application is primarily intended for use with ClusterVMS, but can also be 
 ## Usage
 
 * Either build the docker container, or build locally with `cargo build --release`. Building in release mode is HIGHLY recommended, as performance is MUCH worse under debug mode.
-* Run with these environment variables:
-	* `CAM_SRC_URL`: URL of the camera stream to connect to (do not include username or password in URL)
-	* `CAM_USERNAME`: username to use to connect to the camera stream
-	* `CAM_PASSWORD`: password to use to connect to the camera stream
+* Create TOML files describing the cameras and streams you want forwarded. See `sample-config.toml` for format example.
+	* When sharing config files between several ClusterVMS components, it's recommended to keep the login details and other sensitive config in separate files, accessible only to the applications that need them.
+* Run the executable, pointing it to your config files
+	* E.g. `./rtsp-to-webrtc -c my-config.toml -c my-secret-config.toml`
 * If using containers, forward port 8000
 * Open `example.html` in your browser on the same machine
 

@@ -1,10 +1,31 @@
-use std::str::FromStr;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
+use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
-pub const SRC_URL_ENV_VAR : &str = "CAM_SRC_URL";
-pub const SRC_USERNAME_ENV_VAR : &str = "CAM_USERNAME";
-pub const SRC_PASSWORD_ENV_VAR : &str = "CAM_PASSWORD";
+pub type CameraId = u64;
+pub type StreamId = u64;
 
+pub type VideoTrackMap = HashMap::<CameraId, HashMap<StreamId, Arc<TrackLocalStaticRTP>>>;
+
+#[derive(Clone)]
+#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
+pub struct Camera {
+	pub username: Option<String>,
+	pub password: Option<String>,
+	pub streams: HashMap<String, Stream>,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
+pub struct Stream {
+	pub source_url: Url,
+}
+#[derive(serde::Deserialize)]
 pub struct StreamSettings {
 	pub source_url: Url,
 	pub username: String,
@@ -13,16 +34,4 @@ pub struct StreamSettings {
 
 pub fn get_required_env_var(var_name: &str) -> String {
 	std::env::var(var_name).expect(format!("Environment variable {var_name} should be set.").as_str())
-}
-
-pub fn get_src_stream_settings() -> StreamSettings {
-	let source_url = Url::from_str(get_required_env_var(SRC_URL_ENV_VAR).as_str()).unwrap();
-	let username = get_required_env_var(SRC_USERNAME_ENV_VAR);
-	let password = get_required_env_var(SRC_PASSWORD_ENV_VAR);
-
-	StreamSettings{
-		source_url,
-		username,
-		password,
-	}
 }

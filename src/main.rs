@@ -1,10 +1,11 @@
 use clap::{AppSettings, App, Arg};
-use failure::format_err;
 use futures::StreamExt;
+use log::error;
 use retina::client::PacketItem;
 use rocket::{Request, Response};
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::Header;
+use std::collections::HashMap;
 use std::io::Write;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -16,8 +17,11 @@ use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 #[macro_use] extern crate rocket;
 
 mod common;
+mod config;
 mod rest_api;
 mod webrtc_utils;
+
+use crate::common::{StreamId, VideoTrackMap};
 
 // Since the UI is served by another server, we may need to setup CORS to allow the UI to make requests to this server.
 pub struct CORS;
@@ -45,11 +49,19 @@ impl Fairing for CORS {
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
 	let mut app = App::new("rtsp-to-webrtc")
-		.version("0.1.0")
+		.version("0.2.0")
 		.author("Alicrow")
 		.about("Forwards an RTSP stream as a WebRTC stream.")
 		.setting(AppSettings::DeriveDisplayOrder)
 		.setting(AppSettings::SubcommandsNegateReqs)
+		.arg(
+			Arg::new("config")
+				.takes_value(true)
+				.multiple(true)
+				.short('c')
+				.long("config")
+				.help("TOML file with ClusterVMS config")
+		)
 		.arg(
 			Arg::new("FULLHELP")
 				.help("Prints more detailed help information")
@@ -87,8 +99,36 @@ async fn main() -> anyhow::Result<()> {
 			.init();
 	}
 
-	let source_stream_settings = common::get_src_stream_settings();
+	let config_filenames = matches.values_of("config").unwrap().collect();
+	let mut config_manager = config::ConfigManager::new();
+	config_manager.read_config(config_filenames)?;
 
+	let mut video_tracks = VideoTrackMap::new();
+
+	for (camera_id, camera_info) in &config_manager.get_config().cameras {
+		let mut streams_for_camera = HashMap::<StreamId, Arc<TrackLocalStaticRTP>>::new();
+		for (stream_id, stream_info) in &camera_info.streams {
+			let stream_settings = common::StreamSettings {
+				username: camera_info.username.clone().unwrap().clone(),
+				password: camera_info.password.clone().unwrap().clone(),
+				source_url: stream_info.source_url.clone(),
+			};
+			let video_track = create_video_track(stream_settings).await.unwrap();
+			streams_for_camera.insert(stream_id.parse::<u64>().unwrap(), video_track.clone());
+		}
+		video_tracks.insert(camera_id.parse::<u64>().unwrap(), streams_for_camera);
+	}
+
+	let _rocket = rocket::build()
+		.attach(rest_api::stage(video_tracks))
+		.attach(CORS)
+		.launch()
+		.await?;
+
+	anyhow::Ok(())
+}
+
+async fn create_video_track(stream_settings: common::StreamSettings) -> anyhow::Result<Arc<TrackLocalStaticRTP>> {
 	// Create Track that we send video back to client on
 	let video_track = Arc::new(TrackLocalStaticRTP::new(
 		RTCRtpCodecCapability {
@@ -101,13 +141,13 @@ async fn main() -> anyhow::Result<()> {
 
 	// Set up RTSP connection to camera
 
-	let session_options = retina::client::SessionOptions::default().creds(Some(retina::client::Credentials {username: source_stream_settings.username, password: source_stream_settings.password}) );
-	let mut session = retina::client::Session::describe(source_stream_settings.source_url, session_options).await?;
+	let session_options = retina::client::SessionOptions::default().creds(Some(retina::client::Credentials {username: stream_settings.username, password: stream_settings.password}) );
+	let mut session = retina::client::Session::describe(stream_settings.source_url, session_options).await?;
 	let video_i = session
 		.streams()
 		.iter()
 		.position(|s| s.media() == "video" && s.encoding_name() == "h264")
-		.ok_or_else(|| format_err!("couldn't find H.264 video stream")).unwrap();
+		.ok_or_else(|| error!("couldn't find H.264 video stream")).unwrap();
 	session.setup(video_i, retina::client::SetupOptions::default()).await?;
 	let mut session = session.play(retina::client::PlayOptions::default()).await?;
 
@@ -137,11 +177,5 @@ async fn main() -> anyhow::Result<()> {
 		}
 	});
 
-	let _rocket = rocket::build()
-		.attach(rest_api::stage(video_track))
-		.attach(CORS)
-		.launch()
-		.await?;
-
-	anyhow::Ok(())
+	Ok(video_track)
 }
