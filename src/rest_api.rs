@@ -13,23 +13,23 @@ use crate::webrtc_utils;
 async fn handle_sdp_offer(camera_id: CameraId, stream_id: StreamId, sdp: String, video_tracks_state: &State<VideoTrackMap>) -> (Status, String) {
 	match video_tracks_state.inner().get(&camera_id).and_then(|stream_map| stream_map.get(&stream_id)) {
 		Some(video_track) => {
-	match RTCSessionDescription::offer(sdp) {
-		Ok(offer) => {
+			match RTCSessionDescription::offer(sdp) {
+				Ok(offer) => {
 					match webrtc_utils::create_answer(offer, Arc::clone(video_track)).await {
-				Ok(local_desc) => {
-					return (Status::Created, local_desc.sdp);
+						Ok(local_desc) => {
+							return (Status::Created, local_desc.sdp);
+						},
+						Err(e) => {
+							warn!("Error creating SDP answer: {}", e);
+							return (Status::BadRequest, String::from("bad request"));
+						}
+					}
 				},
 				Err(e) => {
-					warn!("Error creating SDP answer: {}", e);
+					warn!("Error parsing SDP offer: {}", e);
 					return (Status::BadRequest, String::from("bad request"));
 				}
 			}
-		},
-		Err(e) => {
-			warn!("Error parsing SDP offer: {}", e);
-			return (Status::BadRequest, String::from("bad request"));
-		}
-	}
 		},
 		None => {
 			warn!("Could not find track for camera {camera_id}, stream {stream_id}");
