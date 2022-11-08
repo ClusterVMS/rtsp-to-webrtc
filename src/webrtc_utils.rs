@@ -1,4 +1,5 @@
 use anyhow::Context;
+use futures::{future::FutureExt, pin_mut, select};
 use std::sync::Arc;
 use webrtc::api::APIBuilder;
 use webrtc::api::interceptor_registry::register_default_interceptors;
@@ -50,12 +51,30 @@ pub async fn create_answer(offer: RTCSessionDescription, video_track: Arc<TrackL
 		.add_track(video_track)
 		.await?;
 
-	// Read incoming RTCP packets
-	// Before these packets are returned they are processed by interceptors. For things
-	// like NACK this needs to be called.
+	// Channel to send a signal when the client gets disconnected so we can clean up
+	let (disconnected_tx, mut disconnected_rx) = tokio::sync::mpsc::channel::<()>(1);
+
 	tokio::spawn(async move {
 		let mut rtcp_buf = vec![0u8; 1500];
-		while let Ok((_, _)) = rtp_sender.read(&mut rtcp_buf).await {}
+		let disconnected_fut = disconnected_rx.recv().fuse();
+		pin_mut!(disconnected_fut);
+		loop {
+			// Read incoming RTCP packets
+			// Before these packets are returned they are processed by interceptors.
+			// For things like NACK this needs to be called.
+			let recv_rtcp_fut = rtp_sender.read(&mut rtcp_buf).fuse();
+
+			pin_mut!(recv_rtcp_fut);
+			select! {
+				_ = disconnected_fut => {
+					println!("Client is disconnected; cleaning up RTP sender");
+					rtp_sender.stop().await;
+					break;
+				},
+				// Nothing to actually do with the RTCP packets, but we're supposed to read them, anyway
+				_ = recv_rtcp_fut => {}
+			}
+		}
 		anyhow::Result::<()>::Ok(())
 	});
 
@@ -64,6 +83,15 @@ pub async fn create_answer(offer: RTCSessionDescription, video_track: Arc<TrackL
 	peer_connection
 		.on_peer_connection_state_change(Box::new(move |s: RTCPeerConnectionState| {
 			println!("Peer Connection State has changed: {}", s);
+
+			if s == RTCPeerConnectionState::Failed {
+				// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
+				// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
+				// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
+				println!("Peer Connection state is Failed; cleaning up connection.");
+				// Send the disconnected signal so we can clean up the connection objects and stop trying to send data to a connection that's no longer active.
+				let _ = disconnected_tx.try_send(());
+			}
 
 			Box::pin(async {})
 		}))
