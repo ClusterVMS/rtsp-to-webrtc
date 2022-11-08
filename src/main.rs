@@ -1,4 +1,6 @@
+use async_std::task;
 use clap::{AppSettings, App, Arg};
+use core::time::Duration;
 use futures::StreamExt;
 use log::error;
 use retina::client::PacketItem;
@@ -49,7 +51,7 @@ impl Fairing for CORS {
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
 	let mut app = App::new("rtsp-to-webrtc")
-		.version("0.2.0")
+		.version("0.2.1")
 		.author("Alicrow")
 		.about("Forwards an RTSP stream as a WebRTC stream.")
 		.setting(AppSettings::DeriveDisplayOrder)
@@ -113,8 +115,15 @@ async fn main() -> anyhow::Result<()> {
 				password: camera_info.password.clone().unwrap().clone(),
 				source_url: stream_info.source_url.clone(),
 			};
-			let video_track = create_video_track(stream_settings).await.unwrap();
-			streams_for_camera.insert(stream_id.parse::<u64>().unwrap(), video_track.clone());
+			match create_video_track(stream_settings).await {
+				Ok(video_track) => {
+					streams_for_camera.insert(stream_id.parse::<u64>().unwrap(), video_track.clone());
+				}
+				Err(e) => {
+					error!("Could not create track for camera {camera_id} stream {stream_id} video stream due to error: {e:?}");
+					// TODO: keep trying periodically
+				}
+			}
 		}
 		video_tracks.insert(camera_id.parse::<u64>().unwrap(), streams_for_camera);
 	}
@@ -141,39 +150,69 @@ async fn create_video_track(stream_settings: common::StreamSettings) -> anyhow::
 
 	// Set up RTSP connection to camera
 
-	let session_options = retina::client::SessionOptions::default().creds(Some(retina::client::Credentials {username: stream_settings.username, password: stream_settings.password}) );
-	let mut session = retina::client::Session::describe(stream_settings.source_url, session_options).await?;
-	let video_i = session
-		.streams()
-		.iter()
-		.position(|s| s.media() == "video" && s.encoding_name() == "h264")
-		.ok_or_else(|| error!("couldn't find H.264 video stream")).unwrap();
-	session.setup(video_i, retina::client::SetupOptions::default()).await?;
-	let mut session = session.play(retina::client::PlayOptions::default()).await?;
-
-	// Read RTP packets forever and send them to the WebRTC Client
 	let video_track_clone = video_track.clone();
+
+	// Thread that reads from the input stream and writes packets to the output streams
 	tokio::spawn(async move {
 		loop {
-			match Pin::new(&mut session).next().await {
-				None => {
-					println!("stream closed before first frame");
+			let session_options = retina::client::SessionOptions::default().creds(Some(retina::client::Credentials {username: stream_settings.username.clone(), password: stream_settings.password.clone()}) );
+			let session = match retina::client::Session::describe(stream_settings.source_url.clone(), session_options).await {
+				Ok(mut session) => {
+					let video_i = session
+						.streams()
+						.iter()
+						.position(|s| s.media() == "video" && s.encoding_name() == "h264")
+						.ok_or_else(|| error!("Could not find H.264 video stream")).unwrap();
+					match session.setup(video_i, retina::client::SetupOptions::default()).await {
+						Ok(_) => session.play(retina::client::PlayOptions::default()).await,
+						Err(e) => Err(e)
+					}
 				}
-				Some(Err(e)) => {
-					println!("encountered error {}", e);
-				}
-				Some(Ok(PacketItem::Rtp(packet))) => {
-					let raw_rtp = packet.raw();
-					if let Err(err) = video_track_clone.write(&raw_rtp).await {
-						if webrtc::Error::ErrClosedPipe == err {
-							// The peerConnection has been closed.
-						} else {
-							println!("video_track write err: {}", err);
+				Err(e) => Err(e)
+			};
+
+			match session {
+				Ok(mut session) => {
+					// Read RTP packets forever and send them to the WebRTC Client
+					'read_loop: loop {
+						match Pin::new(&mut session).next().await {
+							None => {
+								error!("Source RTSP stream returned None; The stream must have closed.");
+								break 'read_loop;
+							}
+							Some(Err(e)) => {
+								error!("error while reading input stream: {e}");
+								// FIXME: keep track of whether we're connected or not
+								break 'read_loop;
+							}
+							Some(Ok(PacketItem::Rtp(packet))) => {
+								let raw_rtp = packet.raw();
+								if let Err(err) = video_track_clone.write(&raw_rtp).await {
+									if webrtc::Error::ErrClosedPipe == err {
+										// The peerConnection has been closed.
+										// FIXME: when would this even occur?
+									} else {
+										println!("video_track write err: {}", err);
+									}
+								}
+							}
+							Some(Ok(PacketItem::Rtcp(_))) => {
+								// Do nothing with RTCP packets for now
+							}
+							Some(Ok(something)) => {
+								error!("Received something that we can't handle; it was {:?}", something);
+							}
 						}
 					}
 				}
-				Some(Ok(_)) => {}
+				Err(e) => {
+					error!("Failed to connect to input stream, error: {e}");
+				}
 			}
+
+			// Sleep for a bit after getting disconnected or failing to connect.
+			// If the issue persists, we don't want to waste all our time constantly trying to reconnect.
+			task::sleep(Duration::from_secs(1)).await;
 		}
 	});
 
