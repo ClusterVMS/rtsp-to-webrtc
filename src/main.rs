@@ -51,7 +51,7 @@ impl Fairing for CORS {
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
 	let mut app = App::new("rtsp-to-webrtc")
-		.version("0.2.1")
+		.version("0.2.2")
 		.author("Alicrow")
 		.about("Forwards an RTSP stream as a WebRTC stream.")
 		.setting(AppSettings::DeriveDisplayOrder)
@@ -117,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
 			};
 			match create_video_track(stream_settings).await {
 				Ok(video_track) => {
-					streams_for_camera.insert(stream_id.parse::<u64>().unwrap(), video_track.clone());
+					streams_for_camera.insert(stream_id.clone(), video_track.clone());
 				}
 				Err(e) => {
 					error!("Could not create track for camera {camera_id} stream {stream_id} video stream due to error: {e:?}");
@@ -125,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
 				}
 			}
 		}
-		video_tracks.insert(camera_id.parse::<u64>().unwrap(), streams_for_camera);
+		video_tracks.insert(camera_id.clone(), streams_for_camera);
 	}
 
 	let _rocket = rocket::build()

@@ -5,8 +5,8 @@ use std::sync::Arc;
 use url::Url;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 
-pub type CameraId = u64;
-pub type StreamId = u64;
+pub type CameraId = String;
+pub type StreamId = String;
 
 pub type VideoTrackMap = HashMap::<CameraId, HashMap<StreamId, Arc<TrackLocalStaticRTP>>>;
 
@@ -16,7 +16,7 @@ pub type VideoTrackMap = HashMap::<CameraId, HashMap<StreamId, Arc<TrackLocalSta
 pub struct Camera {
 	pub username: Option<String>,
 	pub password: Option<String>,
-	pub streams: HashMap<String, Stream>,
+	pub streams: HashMap<StreamId, Stream>,
 }
 
 #[derive(Clone)]

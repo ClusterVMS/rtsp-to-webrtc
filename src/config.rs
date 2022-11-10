@@ -2,13 +2,13 @@ use figment::{Figment, providers::{Format, Toml}};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::common::Camera;
+use crate::common::{Camera, CameraId};
 
 
 
 #[derive(Clone, Default, Debug, Deserialize)]
 pub struct ClusterVmsConfig {
-	pub cameras: HashMap<String, Camera>,
+	pub cameras: HashMap<CameraId, Camera>,
 }
 
 pub struct ConfigManager {
