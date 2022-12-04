@@ -1,10 +1,11 @@
+use clustervms::{CameraId, StreamId};
 use log::warn;
 use rocket::http::Status;
 use rocket::State;
 use std::sync::Arc;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
-use crate::common::{CameraId, StreamId, VideoTrackMap};
+use crate::common::VideoTrackMap;
 use crate::webrtc_utils;
 
 

@@ -1,5 +1,7 @@
 use async_std::task;
 use clap::{AppSettings, App, Arg};
+use clustervms::config;
+use clustervms::StreamId;
 use core::time::Duration;
 use futures::StreamExt;
 use log::error;
@@ -19,11 +21,10 @@ use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 #[macro_use] extern crate rocket;
 
 mod common;
-mod config;
 mod rest_api;
 mod webrtc_utils;
 
-use crate::common::{StreamId, VideoTrackMap};
+use crate::common::VideoTrackMap;
 
 // Since the UI is served by another server, we may need to setup CORS to allow the UI to make requests to this server.
 pub struct CORS;
@@ -51,7 +52,7 @@ impl Fairing for CORS {
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
 	let mut app = App::new("rtsp-to-webrtc")
-		.version("0.2.2")
+		.version("0.2.3")
 		.author("Alicrow")
 		.about("Forwards an RTSP stream as a WebRTC stream.")
 		.setting(AppSettings::DeriveDisplayOrder)

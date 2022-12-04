@@ -94,8 +94,7 @@ pub async fn create_answer(offer: RTCSessionDescription, video_track: Arc<TrackL
 			}
 
 			Box::pin(async {})
-		}))
-		.await;
+		}));
 
 	// Set the remote SessionDescription
 	peer_connection.set_remote_description(offer).await?;
