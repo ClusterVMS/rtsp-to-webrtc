@@ -1,5 +1,5 @@
 use async_std::task;
-use clap::{AppSettings, App, Arg};
+use clap::{Arg, ArgAction, Command};
 use clustervms::config;
 use clustervms::StreamId;
 use core::time::Duration;
@@ -51,16 +51,13 @@ impl Fairing for CORS {
 // Originally copied from https://github.com/webrtc-rs/webrtc/tree/master/examples/examples/rtp-to-webrtc
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
-	let mut app = App::new("rtsp-to-webrtc")
+	let mut app = Command::new("rtsp-to-webrtc")
 		.version("0.2.3")
 		.author("Alicrow")
 		.about("Forwards an RTSP stream as a WebRTC stream.")
-		.setting(AppSettings::DeriveDisplayOrder)
-		.setting(AppSettings::SubcommandsNegateReqs)
 		.arg(
 			Arg::new("config")
-				.takes_value(true)
-				.multiple(true)
+				.action(ArgAction::Append)	// Allow argument to be specified multiple times
 				.short('c')
 				.long("config")
 				.help("TOML file with ClusterVMS config")
@@ -79,12 +76,12 @@ async fn main() -> anyhow::Result<()> {
 
 	let matches = app.clone().get_matches();
 
-	if matches.is_present("FULLHELP") {
+	if matches.contains_id("FULLHELP") {
 		app.print_long_help().unwrap();
 		std::process::exit(0);
 	}
 
-	let debug = matches.is_present("debug");
+	let debug = matches.contains_id("debug");
 	if debug {
 		env_logger::Builder::new()
 			.format(|buf, record| {
@@ -102,9 +99,18 @@ async fn main() -> anyhow::Result<()> {
 			.init();
 	}
 
-	let config_filenames = matches.values_of("config").unwrap().collect();
 	let mut config_manager = config::ConfigManager::new();
-	config_manager.read_config(config_filenames)?;
+
+	let config_filename_matches = matches.get_many::<String>("config");
+	match config_filename_matches {
+		Some(filenames) => {
+			config_manager.read_config(filenames.map(|v| v.as_str()).collect())?;
+		},
+		None => {
+			// Use default file path
+			config_manager.read_default_config_files()?;
+		}
+	};
 
 	let mut video_tracks = VideoTrackMap::new();
 
@@ -112,8 +118,8 @@ async fn main() -> anyhow::Result<()> {
 		let mut streams_for_camera = HashMap::<StreamId, Arc<TrackLocalStaticRTP>>::new();
 		for (stream_id, stream_info) in &camera_info.streams {
 			let stream_settings = common::StreamSettings {
-				username: camera_info.username.clone().unwrap().clone(),
-				password: camera_info.password.clone().unwrap().clone(),
+				username: camera_info.username.clone().unwrap_or_default().clone(),
+				password: camera_info.password.clone().unwrap_or_default().clone(),
 				source_url: stream_info.source_url.clone(),
 			};
 			match create_video_track(stream_settings).await {

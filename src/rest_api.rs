@@ -49,6 +49,6 @@ pub fn stage(video_tracks: VideoTrackMap) -> rocket::fairing::AdHoc {
 		rocket
 			.manage(video_tracks)
 			.register("/", catchers![not_found])
-			.mount("/", routes![handle_sdp_offer])
+			.mount("/v0", routes![handle_sdp_offer])
 	})
 }

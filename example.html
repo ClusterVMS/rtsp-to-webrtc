@@ -31,7 +31,7 @@
 			pc.onicecandidate = event => {
 				if (event.candidate === null) {
 					const xhr = new XMLHttpRequest();
-					const url = "http://localhost:8000/cameras/1/streams/1/sdp";
+					const url = "http://localhost:8000/v0/cameras/1/streams/1/sdp";
 					
 					xhr.onreadystatechange = (e) => {
 						if(xhr.readyState === XMLHttpRequest.DONE && xhr.status === 201) {
