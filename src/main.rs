@@ -4,15 +4,14 @@ use clustervms::config;
 use clustervms::StreamId;
 use core::time::Duration;
 use futures::StreamExt;
-use log::error;
 use retina::client::PacketItem;
 use rocket::{Request, Response};
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::Header;
 use std::collections::HashMap;
-use std::io::Write;
 use std::pin::Pin;
 use std::sync::Arc;
+use tracing::{error, info_span, Instrument};
 use webrtc::api::media_engine::{MIME_TYPE_H264};
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 use webrtc::track::track_local::{TrackLocalWriter};
@@ -81,23 +80,15 @@ async fn main() -> anyhow::Result<()> {
 		std::process::exit(0);
 	}
 
-	let debug = matches.contains_id("debug");
-	if debug {
-		env_logger::Builder::new()
-			.format(|buf, record| {
-				writeln!(
-					buf,
-					"{}:{} [{}] {} - {}",
-					record.file().unwrap_or("unknown"),
-					record.line().unwrap_or(0),
-					record.level(),
-					chrono::Local::now().format("%H:%M:%S.%6f"),
-					record.args()
-				)
-			})
-			.filter(None, log::LevelFilter::Trace)
-			.init();
-	}
+	let log_level = if matches.contains_id("debug") {
+		tracing::Level::DEBUG
+	} else {
+		tracing::Level::INFO
+	};
+
+	tracing_subscriber::fmt()
+		.with_max_level(log_level)
+		.init();
 
 	let mut config_manager = config::ConfigManager::new();
 
@@ -122,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
 				password: camera_info.password.clone().unwrap_or_default().clone(),
 				source_url: stream_info.source_url.clone(),
 			};
-			match create_video_track(stream_settings).await {
+			match create_video_track(stream_settings).instrument(info_span!("create_video_track", camera_id, stream_id)).await {
 				Ok(video_track) => {
 					streams_for_camera.insert(stream_id.clone(), video_track.clone());
 				}
@@ -199,7 +190,7 @@ async fn create_video_track(stream_settings: common::StreamSettings) -> anyhow::
 										// The peerConnection has been closed.
 										// FIXME: when would this even occur?
 									} else {
-										println!("video_track write err: {}", err);
+										error!("video_track write err: {}", err);
 									}
 								}
 							}
@@ -213,7 +204,7 @@ async fn create_video_track(stream_settings: common::StreamSettings) -> anyhow::
 					}
 				}
 				Err(e) => {
-					error!("Failed to connect to input stream, error: {e}");
+					error!("Failed to connect to input stream {}, error: {e}", stream_settings.source_url);
 				}
 			}
 
@@ -221,7 +212,7 @@ async fn create_video_track(stream_settings: common::StreamSettings) -> anyhow::
 			// If the issue persists, we don't want to waste all our time constantly trying to reconnect.
 			task::sleep(Duration::from_secs(1)).await;
 		}
-	});
+	}.instrument(info_span!("read_loop")));
 
 	Ok(video_track)
 }

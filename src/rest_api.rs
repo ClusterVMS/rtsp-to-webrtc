@@ -1,8 +1,8 @@
 use clustervms::{CameraId, StreamId};
-use log::warn;
 use rocket::http::Status;
 use rocket::State;
 use std::sync::Arc;
+use tracing::{instrument, warn};
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
 use crate::common::VideoTrackMap;
@@ -11,6 +11,7 @@ use crate::webrtc_utils;
 
 
 #[post("/cameras/<camera_id>/streams/<stream_id>/sdp", data="<sdp>")]
+#[instrument(skip(sdp, video_tracks_state))]
 async fn handle_sdp_offer(camera_id: CameraId, stream_id: StreamId, sdp: String, video_tracks_state: &State<VideoTrackMap>) -> (Status, String) {
 	match video_tracks_state.inner().get(&camera_id).and_then(|stream_map| stream_map.get(&stream_id)) {
 		Some(video_track) => {
