@@ -51,7 +51,7 @@ impl Fairing for CORS {
 #[rocket::main]
 async fn main() -> anyhow::Result<()> {
 	let mut app = Command::new("rtsp-to-webrtc")
-		.version("0.2.3")
+		.version("0.2.4")
 		.author("Alicrow")
 		.about("Forwards an RTSP stream as a WebRTC stream.")
 		.arg(
